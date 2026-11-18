@@ -3,7 +3,8 @@ setlocal enabledelayedexpansion
 rem ================================================================
 rem  Static site packaging
 rem
-rem  Server package : index.html only, kept as-is (no precompression)
+rem  Server package : index.html + favicon.ico + robots.txt + sitemap.xml,
+rem                   kept as-is (no precompression)
 rem  CDN package    : every static asset (images, video, css, js)
 rem                   under assets\, with brotli (.br) and gzip (.gz)
 rem                   beside the text files for brotli_static /
@@ -126,9 +127,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem  robots.txt and sitemap.xml are served from the site root
+for %%F in (robots.txt sitemap.xml) do (
+    if not exist "%SITE_DIR%\%%F" (
+        echo Missing source file: %SITE_DIR%\%%F
+        exit /b 1
+    )
+    copy /y "%SITE_DIR%\%%F" "%STAGE_SITE_DIR%\%%F" >nul
+    if errorlevel 1 (
+        echo Failed to copy %%F
+        exit /b 1
+    )
+)
+
 set "STAMP_SRC=%SITE_DIR%\assets"
 set "STAMP_ROOT=%SITE_DIR%"
 set "STAMP_HTML=%STAGE_SITE_DIR%\index.html"
+set "STAMP_SITE=%STAGE_SITE_DIR%"
 call :stamp_versions
 if errorlevel 1 (
     echo Failed to stamp asset versions into index.html
@@ -156,7 +171,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "    $fh = (Get-FileHash -LiteralPath $fp -Algorithm SHA256).Hash.Substring(0,8).ToLower();" ^
     "    $text = [regex]::Replace($text, '(\./)?favicon\.ico(\?v=[0-9a-f]+)?', '$1favicon.ico?v=' + $fh);" ^
     "}" ^
-    "[System.IO.File]::WriteAllText($html, $text, (New-Object System.Text.UTF8Encoding($false)))"
+    "[System.IO.File]::WriteAllText($html, $text, (New-Object System.Text.UTF8Encoding($false)));" ^
+    "$sm = Join-Path $env:STAMP_SITE 'sitemap.xml';" ^
+    "if (Test-Path -LiteralPath $sm) {" ^
+    "    $d = (Get-Date).ToString('yyyy-MM-dd');" ^
+    "    $st = [System.IO.File]::ReadAllText($sm);" ^
+    "    $st = [regex]::Replace($st, '<lastmod>[^<]*</lastmod>', '<lastmod>' + $d + '</lastmod>');" ^
+    "    [System.IO.File]::WriteAllText($sm, $st, (New-Object System.Text.UTF8Encoding($false)));" ^
+    "}"
 
 if %ERRORLEVEL% NEQ 0 (
     echo version stamping failed with exit code %ERRORLEVEL%.
