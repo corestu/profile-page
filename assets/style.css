@@ -1,0 +1,392 @@
+:root{
+  --ink:#0a2135;
+  --ink-2:rgba(10,33,53,.76);
+  --ink-3:rgba(10,33,53,.55);
+  --line:rgba(255,255,255,.72);
+  --line-soft:rgba(10,45,75,.10);
+  --card:rgba(255,255,255,.5);
+  --radius:26px;
+}
+
+*{box-sizing:border-box}
+
+html,body{height:100%}
+body{
+  margin:0;
+  min-height:100%;
+  background:#e9e6f4;
+  background-image:linear-gradient(165deg,#e6ecfa 0%,#d9d2f0 34%,#cfe9ea 68%,#f6e6dd 100%);
+  background-attachment:fixed;
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+/* ---------- 背景：极光图案 + 棱纹光栅，保持原亮度 ---------- */
+.bg-canvas{
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:block;
+  z-index:0;
+  filter:blur(1.25px);
+  transform:scale(1.012);
+  transform-origin:center;
+  opacity:0;
+  transition:opacity .9s ease;
+}
+body.is-ready .bg-canvas{opacity:1}
+
+/* 纹理源视频：不显示，只供 WebGL 采样 */
+.bg-video{
+  position:fixed;
+  left:0;
+  bottom:0;
+  width:2px;
+  height:2px;
+  opacity:.001;
+  pointer-events:none;
+  z-index:0;
+  object-fit:cover;
+}
+
+/* 无 WebGL 时的降级光栅 */
+.bg-ribs{display:none}
+body.no-webgl .bg-canvas{display:none}
+body.no-webgl .bg-video{
+  left:0;
+  top:0;
+  width:100%;
+  height:100%;
+  opacity:1;
+  filter:blur(1.25px);
+  transform:scale(1.012);
+}
+body.no-webgl .bg-ribs{
+  display:block;
+  position:fixed;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  /* 与 WebGL 棱纹同宽：27px 一条，窄屏不会变密 */
+  background:repeating-linear-gradient(90deg,
+    rgba(255,255,255,.10) 0 1px,
+    rgba(255,255,255,0) 1px 26px,
+    rgba(3,20,40,.06) 26px 27px);
+}
+
+/* ---------- 布局 ---------- */
+.page{
+  position:relative;
+  z-index:2;
+  min-height:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:22px;
+  padding:clamp(28px,6vh,72px) clamp(16px,4vw,32px);
+}
+
+.card{
+  position:relative;
+  width:100%;
+  max-width:660px;
+  padding:clamp(26px,4.2vw,44px);
+  border-radius:var(--radius);
+  border:1px solid var(--line);
+  background:var(--card);
+  backdrop-filter:blur(22px) saturate(165%) brightness(1.18);
+  -webkit-backdrop-filter:blur(22px) saturate(165%) brightness(1.18);
+  box-shadow:
+    0 34px 80px -34px rgba(6,42,74,.34),
+    0 1px 2px rgba(6,42,74,.10),
+    inset 0 1px 0 rgba(255,255,255,.85);
+  overflow:hidden;
+  animation:rise .9s cubic-bezier(.2,.7,.25,1) both;
+}
+/* 棱纹质感：呼应竖向毛玻璃 */
+.card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  background:repeating-linear-gradient(90deg,
+    rgba(255,255,255,.42) 0 1px,
+    rgba(255,255,255,0) 1px 7px);
+  opacity:.55;
+}
+
+@keyframes rise{
+  from{opacity:0;transform:translateY(14px) scale(.994)}
+  to{opacity:1;transform:none}
+}
+
+/* 内容压在棱纹之上，保持文字清晰 */
+.card-head,.bio,.links,.rule,.block{
+  position:relative;
+  z-index:1;
+}
+
+/* ---------- 头部 ---------- */
+.card-head{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  margin-bottom:22px;
+}
+.avatar{
+  flex:0 0 auto;
+  width:78px;
+  height:78px;
+  display:block;
+  object-fit:contain;
+  background:none;
+  border:0;
+  border-radius:0;
+}
+.wave{display:inline-block;margin-left:2px}
+.ident{min-width:0}
+.name{
+  margin:0;
+  font-size:clamp(23px,3.4vw,29px);
+  font-weight:600;
+  letter-spacing:.01em;
+  line-height:1.25;
+}
+.handle{
+  margin:4px 0 0;
+  font-size:13.5px;
+  color:var(--ink-3);
+  letter-spacing:.02em;
+}
+
+.bio{
+  margin:0 0 24px;
+  color:var(--ink-2);
+  font-size:15.5px;
+  line-height:1.8;
+  max-width:52ch;
+}
+
+/* ---------- 链接：文字 + 箭头 ---------- */
+.links{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:12px 26px;
+}
+.link{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:2px 1px 3px;
+  color:var(--ink);
+  font-size:15.5px;
+  font-weight:500;
+  letter-spacing:.01em;
+  text-decoration:none;
+  transition:color .2s ease;
+}
+.link::after{
+  content:"";
+  position:absolute;
+  left:0;right:0;bottom:0;
+  height:1px;
+  background:currentColor;
+  transform:scaleX(0);
+  transform-origin:left center;
+  transition:transform .26s cubic-bezier(.4,0,.2,1);
+}
+.link:hover,.link:focus-visible{color:#0b3f66;outline:none}
+.link:hover::after,.link:focus-visible::after{transform:scaleX(1)}
+.link:focus-visible{border-radius:4px;box-shadow:0 0 0 3px rgba(38,110,158,.3)}
+.arrow{
+  flex:0 0 auto;
+  width:14px;height:14px;
+  margin-top:1px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  opacity:.5;
+  transition:opacity .2s ease,transform .2s ease;
+}
+.link:hover .arrow,.link:focus-visible .arrow{
+  opacity:1;
+  transform:translate(1.5px,-1.5px);
+}
+
+/* 邮箱：不跳转，悬停/聚焦显示地址 */
+.link-mail{
+  cursor:help;
+}
+.tip{
+  position:absolute;
+  left:0;
+  bottom:calc(100% + 10px);
+  transform:translateY(4px);
+  padding:5px 10px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:400;
+  letter-spacing:.02em;
+  white-space:nowrap;
+  color:var(--ink);
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(255,255,255,.9);
+  box-shadow:0 8px 22px -10px rgba(6,42,74,.45);
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease,visibility .18s;
+}
+.tip::after{
+  content:"";
+  position:absolute;
+  left:14px;
+  top:100%;
+  width:7px;height:7px;
+  margin-left:-3.5px;
+  background:rgba(255,255,255,.94);
+  border-right:1px solid rgba(255,255,255,.9);
+  border-bottom:1px solid rgba(255,255,255,.9);
+  transform:translateY(-4px) rotate(45deg);
+}
+.link-mail:hover .tip,
+.link-mail:focus .tip,
+.link-mail:focus-visible .tip{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+}
+
+.rule{
+  height:1px;
+  margin:26px 0 22px;
+  background:linear-gradient(90deg,rgba(10,45,75,.14),rgba(10,45,75,.07) 60%,transparent);
+}
+
+/* ---------- 列表 ---------- */
+.block-title{
+  margin:0 0 6px;
+  font-size:11.5px;
+  font-weight:600;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+.items{
+  list-style:none;
+  margin:0;
+  padding:0;
+}
+.item{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:4px 14px;
+  padding:11px 0;
+  border-bottom:1px solid var(--line-soft);
+}
+.item:last-child{border-bottom:0;padding-bottom:2px}
+.item-name{
+  flex:0 0 auto;
+  font-size:14.5px;
+  font-weight:500;
+  color:var(--ink);
+}
+.item-desc{
+  font-size:13.5px;
+  color:var(--ink-3);
+}
+
+/* ---------- 版权 + 备案号：卡片底部两端 ---------- */
+.foot{
+  position:relative;
+  z-index:1;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:4px 16px;
+  margin:20px 0 -2px;
+  padding-top:13px;
+  border-top:1px solid var(--line-soft);
+  font-size:11.5px;
+  line-height:1.5;
+  color:rgba(10,33,53,.44);
+  letter-spacing:.02em;
+}
+.beian{
+  white-space:nowrap;
+  color:inherit;
+  text-decoration:none;
+  transition:color .2s ease;
+}
+.beian:hover,.beian:focus-visible{
+  color:rgba(10,33,53,.68);
+  text-decoration:underline;
+  text-underline-offset:2px;
+  outline:none;
+}
+
+/* ---------- 窄屏：卡片铺满整屏，版权与备案号贴底 ---------- */
+@media (max-width:640px){
+  .page{
+    min-height:100vh;
+    min-height:100dvh;
+    gap:0;
+    padding:0;
+  }
+  .card{
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    max-width:none;
+    min-height:100vh;
+    min-height:100dvh;
+    padding:calc(24px + env(safe-area-inset-top))
+            clamp(18px,5vw,26px)
+            calc(16px + env(safe-area-inset-bottom));
+    border:0;
+    border-radius:0;
+    box-shadow:none;
+    /* 铺满全屏后整块画面都被透过一遍，亮度稍收，免得极光发白 */
+    backdrop-filter:blur(20px) saturate(160%) brightness(1.1);
+    -webkit-backdrop-filter:blur(20px) saturate(160%) brightness(1.1);
+  }
+  .card::after{
+    /* 整屏铺满时棱纹间距按 7px 会过密，放宽到 11px */
+    background:repeating-linear-gradient(90deg,
+      rgba(255,255,255,.34) 0 1px,
+      rgba(255,255,255,0) 1px 11px);
+  }
+  /* 页脚吃掉剩余高度，始终贴在屏幕底部 */
+  .foot{
+    margin-top:auto;
+    margin-bottom:0;
+  }
+  /* 内容块在上方剩余空间里居中，避免矮内容时整块挤在顶部 */
+  .card-head{
+    margin-top:auto;
+  }
+}
+
+@media (max-width:520px){
+  .avatar{width:62px;height:62px}
+  .card-head{gap:14px;margin-bottom:18px}
+  .item{flex-direction:column;gap:2px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .card{animation:none}
+  .link,.link::after,.arrow{transition:none}
+}

@@ -1,0 +1,15 @@
+# 构建产物
+/dist/
+/pack/
+
+# 预压缩副本（打包时在临时目录生成）
+*.br
+*.gz
+
+# 系统 / 编辑器杂项
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+~$*

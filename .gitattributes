@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# 打包脚本必须在 cmd 下运行，换行不能被转换
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制资源
+*.mp4 binary
+*.webp binary
+*.png binary
+*.ico binary
+*.zip binary
