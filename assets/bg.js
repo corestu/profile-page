@@ -23,6 +23,10 @@
     'uniform sampler2D tex;',
     /* 一条棱纹的宽度（设备像素）：固定值，不随屏幕宽度变化 */
     'uniform float ribWidth;',
+    /* 指针位置（0..1，y 轴向上）与扰动强度（0..1） */
+    'uniform vec2 uMouse;',
+    'uniform float uPointer;',
+    'uniform float uTime;',
     /* 屏幕坐标映射到视频纹理（cover 裁切）后取样 */
     'vec3 sampleAt(vec2 s){',
     '  vec2 uv = 0.5 + (s - 0.5) * uvScale;',
@@ -31,11 +35,29 @@
     '}',
     'void main(){',
     '  vec2 suv = gl_FragCoord.xy / resolution;',
+    /* —— 指针扰动：以指针为圆心的同心涟漪，先把棱纹相位推开，再带动取样点 —— */
+    '  float par = resolution.x / resolution.y;',
+    '  vec2 dp = (suv - uMouse) * vec2(par, 1.0);',
+    '  float pd = max(length(dp), 1e-5);',
+    /* 影响半径约屏高 1/4，平方衰减，边界不留圈 */
+    '  float infl = uPointer * exp(-pd * pd * 42.0);',
+    '  float wave = 0.0;',
+    '  vec2 shift = vec2(0.0);',
+    '  if (infl > 0.002) {',
+    /* 两组波叠加：低频是鼓包，高频是细纹，整体随时间向外走 */
+    '    float w = sin(pd * 52.0 - uTime * 6.0) * 0.62 + sin(pd * 23.0 - uTime * 2.8) * 0.38;',
+    '    wave = w * infl;',
+    '    vec2 dirn = dp / pd;',
+    '    vec2 perp = vec2(-dirn.y, dirn.x);',
+    /* 径向推开 + 一点切向扭转，像指尖按在玻璃上 */
+    '    shift = (dirn * wave * 0.016 + perp * wave * 0.007) / vec2(par, 1.0);',
+    '  }',
     /* 棱纹宽度固定：屏幕越窄条数越少，单位宽度保持一致，手机端不会变密 */
     '  float rw = ribWidth / resolution.x;',
     '  float rh = ribWidth / resolution.y;',
-    '  float rib = fract(gl_FragCoord.x / ribWidth) - 0.5;',
-    '  vec2 r = suv + vec2(rib * rw * 1.28, (rib * rib - 0.0833) * rh * 1.36);',
+    /* wave 直接加在相位上，棱纹才会真的被压弯（只挪取样点看不出形变） */
+    '  float rib = fract(gl_FragCoord.x / ribWidth + wave * 1.4) - 0.5;',
+    '  vec2 r = suv + vec2(rib * rw * 1.28, (rib * rib - 0.0833) * rh * 1.36) + shift;',
     '  vec3 c = sampleAt(r) * 0.40;',
     '  c += sampleAt(r + vec2(0.0, rh * 0.80)) * 0.20;',
     '  c += sampleAt(r - vec2(0.0, rh * 0.80)) * 0.20;',
@@ -61,6 +83,9 @@
     /* 棱纹透镜的暗边与高光 */
     '  c *= 1.0 - 0.07 * pow(abs(rib) * 2.0, 3.0);',
     '  c += vec3(0.85, 0.92, 1.0) * pow(abs(rib) * 2.0, 10.0) * 0.06;',
+    /* 涟漪波峰微亮、涡心略暗，给扰动一点体积感 */
+    '  c += vec3(0.72, 0.86, 1.0) * max(wave, 0.0) * 0.05;',
+    '  c *= 1.0 - 0.05 * uPointer * exp(-pd * pd * 22.0);',
     '  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);',
     '}'
   ].join('\n');
@@ -74,8 +99,15 @@
 
   var program = null, buffer = null, texture = null;
   var uRes = null, uScale = null, uRib = null;
+  var uMouse = null, uPointer = null, uTime = null;
   var frame = 0, paused = false, visible = true, destroyed = false;
   var lastVideoTime = -1, hasFrame = false;
+
+  /* 指针扰动状态：目标点 → 缓动点，强度随移动加速、随时间衰减 */
+  var mouseTo = { x: 0.5, y: 0.5 };
+  var mouseAt = { x: 0.5, y: 0.5 };
+  var pointerPower = 0;
+  var pointerLast = 0;
 
   function compile(type, source) {
     var shader = gl.createShader(type);
@@ -116,6 +148,9 @@
     uRes = gl.getUniformLocation(program, 'resolution');
     uScale = gl.getUniformLocation(program, 'uvScale');
     uRib = gl.getUniformLocation(program, 'ribWidth');
+    uMouse = gl.getUniformLocation(program, 'uMouse');
+    uPointer = gl.getUniformLocation(program, 'uPointer');
+    uTime = gl.getUniformLocation(program, 'uTime');
     gl.uniform1i(gl.getUniformLocation(program, 'tex'), 0);
 
     texture = gl.createTexture();
@@ -144,9 +179,15 @@
   function upload() {
     if (!video || video.readyState < 2 || !video.videoWidth) return false;
     if (hasFrame && video.currentTime === lastVideoTime) return true;
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+    try {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+    } catch (e) {
+      /* file:// 或未带 CORS 的跨域视频会上传失败，直接掉到 CSS 光栅，别留一张白屏 */
+      fallback();
+      return false;
+    }
     lastVideoTime = video.currentTime;
     hasFrame = true;
     return true;
@@ -161,14 +202,33 @@
     gl.uniform2f(uScale, sx, sy);
   }
 
+  /* 每帧推进指针：位置缓动跟随，扰动强度按指数衰减 */
+  function advancePointer() {
+    var now = performance.now();
+    var dt = pointerLast ? (now - pointerLast) / 1000 : 0.016;
+    pointerLast = now;
+    if (dt > 0.1) dt = 0.1;
+    var k = 1 - Math.exp(-dt * 16);
+    mouseAt.x += (mouseTo.x - mouseAt.x) * k;
+    mouseAt.y += (mouseTo.y - mouseAt.y) * k;
+    if (pointerPower > 0.0005) {
+      pointerPower *= Math.exp(-dt * 2.0);
+      if (pointerPower < 0.0005) pointerPower = 0;
+    }
+  }
+
   function render() {
     if (!gl || destroyed) return false;
     if (!canvas.width || !canvas.height) return false;
     if (!upload()) return false;
+    advancePointer();
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.uniform2f(uRes, canvas.width, canvas.height);
     /* 27 CSS px 一条；乘上画布实际的像素比，保证不同 DPR 下粗细一致 */
     gl.uniform1f(uRib, RIB_CSS * (canvas.width / Math.max(1, window.innerWidth)));
+    gl.uniform2f(uMouse, mouseAt.x, mouseAt.y);
+    gl.uniform1f(uPointer, pointerPower);
+    gl.uniform1f(uTime, (performance.now() % 1e7) * 0.001);
     updateScale();
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     if (!body.classList.contains('is-ready')) body.classList.add('is-ready');
@@ -249,6 +309,54 @@
   window.addEventListener('resize', scheduleResize);
   window.addEventListener('orientationchange', scheduleResize);
 
+  /* —— 指针扰动 —— */
+  var lastMoveAt = 0;
+
+  /* 把客户端坐标换成 0..1 的着色器坐标（y 轴向上），并按移动速度给出扰动强度 */
+  function pushPointer(clientX, clientY, dt) {
+    var w = Math.max(1, window.innerWidth);
+    var h = Math.max(1, window.innerHeight);
+    var nx = Math.min(1, Math.max(0, clientX / w));
+    var ny = Math.min(1, Math.max(0, 1 - clientY / h));
+    var dx = (nx - mouseTo.x) * (w / h);
+    var dy = ny - mouseTo.y;
+    var speed = Math.sqrt(dx * dx + dy * dy) / Math.max(0.008, dt / 1000);
+    mouseTo.x = nx;
+    mouseTo.y = ny;
+    var target = Math.min(1, 0.30 + speed * 0.55);
+    pointerPower += (target - pointerPower) * 0.5;
+    if (pointerPower > 1) pointerPower = 1;
+  }
+
+  function onPointerMove(e) {
+    if (!gl || destroyed || media.matches) return;
+    var now = performance.now();
+    var dt = lastMoveAt ? now - lastMoveAt : 16;
+    lastMoveAt = now;
+    pushPointer(e.clientX, e.clientY, Math.min(60, Math.max(8, dt)));
+  }
+
+  function onPointerDown(e) {
+    if (!gl || destroyed || media.matches) return;
+    pushPointer(e.clientX, e.clientY, 16);
+    pointerPower = Math.min(1, pointerPower + 0.55);
+  }
+
+  if (window.PointerEvent) {
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+  } else {
+    window.addEventListener('mousemove', onPointerMove, { passive: true });
+    window.addEventListener('touchmove', function (e) {
+      var t = e.touches && e.touches[0];
+      if (t) onPointerMove(t);
+    }, { passive: true });
+    window.addEventListener('touchstart', function (e) {
+      var t = e.touches && e.touches[0];
+      if (t) onPointerDown(t);
+    }, { passive: true });
+  }
+
   /* 视频就绪 / 自动播放被拦截后的补播都会回到这里重绘 */
   function boot() {
     resize();
@@ -257,8 +365,18 @@
   }
 
   if (video) {
+    /* file:// 下 crossorigin 会让整段视频加载失败（错误码 4）。
+       去掉它至少能出画，纹理仍会被拒，随后走降级：视频 + CSS 光栅 */
+    if (location.protocol === 'file:' && video.hasAttribute('crossorigin')) {
+      video.removeAttribute('crossorigin');
+      video.load();
+    }
     video.addEventListener('loadeddata', boot);
     video.addEventListener('playing', boot);
+    /* 视频彻底不可用（路径错、编码不支持）：别留一张空画布 */
+    video.addEventListener('error', function () {
+      if (!destroyed) fallback();
+    });
     /* 自动播放被拦截：首次点击页面时补播一次 */
     document.addEventListener('click', function () {
       if (!gl || paused) return;

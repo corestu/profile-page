@@ -1,6 +1,7 @@
 # 构建产物
 /dist/
 /pack/
+/_preview.html
 
 # 预压缩副本（打包时在临时目录生成）
 *.br

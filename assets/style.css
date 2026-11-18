@@ -343,23 +343,11 @@ body.no-webgl .bg-ribs{
   /* 回弹会把卡片外的内容拽出来 */
   html{overscroll-behavior-y:none}
 
-  /* 毛玻璃铺在固定层上，尺寸永远等于视口。
-     卡片只负责排版，这样地址栏收起、dvh 重算滞后、页面回弹时都不会在底部露出背景 */
-  .page::before{
-    content:"";
-    position:fixed;
-    inset:0;
-    z-index:-1;
-    pointer-events:none;
-    background-color:var(--card);
-    /* 整屏铺满时棱纹间距按 7px 会过密，放宽到 11px */
-    background-image:repeating-linear-gradient(90deg,
-      rgba(255,255,255,.34) 0 1px,
-      rgba(255,255,255,0) 1px 11px);
-    /* 铺满全屏后整块画面都被透过一遍，亮度稍收，免得极光发白 */
-    backdrop-filter:blur(20px) saturate(160%) brightness(1.1);
-    -webkit-backdrop-filter:blur(20px) saturate(160%) brightness(1.1);
-  }
+  /* 手机上不再铺白色毛玻璃：文字直接压在极光棱纹上 */
+  .page::before{display:none}
+  /* 没了卡片底色托着，次级文字要再深一点，彩底上才压得住 */
+  :root{--ink-3:rgba(10,33,53,.66)}
+  .foot{color:rgba(10,33,53,.56)}
 
   .page{
     min-height:100vh;

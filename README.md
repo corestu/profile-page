@@ -15,6 +15,7 @@
 | 棱纹折射 | 原生 WebGL 片元着色器，把视频帧当纹理，按 27px 一条的竖向棱纹做透镜形变与多次软化采样 |
 | 毛玻璃卡片 | CSS `backdrop-filter: blur() saturate() brightness()`，白色半透明底，正文深蓝 |
 | 下半屏柔化 | 着色器内按高度渐变，底部 12 点黄金角圆盘采样，越靠下越只剩大概颜色 |
+| 指针扰动 | 鼠标划过时以指针为圆心压出涟漪，棱纹相位被推开、取样点跟着偏移，停下后一秒内衰减回原样 |
 
 实现上有几处取舍：
 
@@ -22,6 +23,7 @@
 - 没有暗色遮罩，背景保持原始亮度，可读性靠卡片的白色底与文字对比度。
 - 视频帧率与渲染解耦：只有 `video.currentTime` 变化时才重新上传纹理，页面不可见或滚出视口时视频和渲染一起暂停。
 - 降级链：无 WebGL 时用视频加 CSS 棱纹，无 JS 时是静态径向渐变，`prefers-reduced-motion` 下停在首帧。
+- 指针扰动不占额外采样：只改动棱纹相位与取样坐标，触屏上按住或划过同样会激起涟漪。
 
 ## 目录结构
 
@@ -32,6 +34,7 @@ profile-page/
 ├── robots.txt              源站根目录
 ├── sitemap.xml             源站根目录，打包时自动刷新 lastmod
 ├── package-site.bat        打包脚本，产出服务器包与 CDN 包
+├── preview.bat             本地预览，生成 _preview.html 并起 HTTP 服务
 ├── assets/                 全部静态素材，整目录上传 CDN
 │   ├── style.css           样式
 │   ├── bg.js               WebGL 渲染器（无依赖）
@@ -46,14 +49,11 @@ profile-page/
 
 ## 本地预览
 
-必须用 HTTP 打开，双击文件不行：视频帧要作为 WebGL 纹理上传，`file://` 下这一步通常会被浏览器拒绝，页面掉到降级分支。
+双击 `preview.bat`。它把 `index.html` 里指向 CDN 的地址临时改成 `./assets/`，生成 `_preview.html`，然后起一个本地 HTTP 服务并打开浏览器。
 
-```bash
-python -m http.server 8080
-# 打开 http://localhost:8080/
-```
+必须走 HTTP，双击 `index.html` 不行：视频帧要作为 WebGL 纹理上传，`file://` 下这一步会被浏览器拒绝（`SecurityError`），只能掉到降级分支，棱纹和鼠标扰动都没了。同理，直接打开 `dist/index.html` 也不行——里面引用的还是 CDN 上的旧文件。
 
-`index.html` 引用的是 CDN 上的 `style.css` 和 `bg.js`。要在本地改样式看效果，得把这两处 `<link>`、`<script>` 临时指向 `./assets/`。
+服务停掉的方式就是关掉那个命令行窗口，`_preview.html` 每次运行都会重新生成，不用手动删。
 
 ## 打包
 
@@ -122,6 +122,7 @@ server {
 
 - ≥ 641px：居中卡片，圆角、描边、阴影，最大宽度 520px
 - ≤ 640px：卡片铺满整屏，去掉圆角和阴影，`min-height: 100dvh`，四边留 `env(safe-area-inset-*)` 安全区，页脚用 `margin-top: auto` 贴底
+- 手机上不再铺白色毛玻璃：卡片底色和竖纹一起撤掉，文字直接压在极光棱纹上，次级文字色相应加深一档
 - `<meta name="viewport">` 带 `viewport-fit=cover`，避免 iOS 刘海屏出现色差条
 
 ## 素材来源
